@@ -312,7 +312,7 @@ void ods_print_sheet_names(void *_ctx)
 	}
 }
 
-void ods_print_sheet(void *_ctx, const char *name)
+int ods_print_sheet(void *_ctx, const char *name)
 {
 	struct ctx *ctx = (struct ctx *)_ctx;
 	struct xml_elem *sheet;
@@ -321,8 +321,10 @@ void ods_print_sheet(void *_ctx, const char *name)
 				        "table:name", name);
 	if (!sheet) {
 		fprintf(stderr, "Failed to get sheet \"%s\"\n", name);
-		return;
+		return -1;
 	}
 
 	xml_print(sheet, stdout);
+
+	return 0;
 }

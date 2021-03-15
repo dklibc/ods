@@ -15,7 +15,7 @@ const char *ods_sheet_val(void *ctx, int row, int col);
 
 void ods_print_sheet_names(void *ctx);
 
-void ods_print_sheet(void *ctx, const char *name);
+int ods_print_sheet(void *ctx, const char *name);
 
 #endif
 

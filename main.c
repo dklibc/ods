@@ -4,11 +4,52 @@
 
 #include "ods.h"
 
-static int col_letter2num(int c)
+static int parse_cell_name(const char *s, int *row, int *col)
 {
-	if (c >= 'A' && c <= 'Z')
-		return c - 'A';
-	return -1;
+	char c;
+	int n;
+
+	if (sscanf(s, "%c%u%n", &c, row, &n) != 2)
+		return -1;
+
+	if (c < 'A' || c > 'Z' || row <= 0)
+		return -1;
+	*col = c - 'A';
+	(*row)--;
+
+	return n;
+}
+
+struct cell_area {
+	int row1, col1;
+	int row2, col2;
+};
+
+static int parse_cell_area(const char *s, struct cell_area *area)
+{
+	char c;
+	int n, row, col;
+
+	n = parse_cell_name(s, &area->row1, &area->col1);
+	if (n < 0)
+		return -1;
+
+	if (!s[n]) {
+		area->row2 = area->row1;
+		area->col2 = area->col1;
+		return 0;
+	}
+
+	if (s[n] != ':')
+		return -1;
+
+	s += n + 1;
+
+	n = parse_cell_name(s, &area->row2, &area->col2);
+	if (n < 0 || s[n])
+		return -1;
+
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -16,53 +57,53 @@ int main(int argc, char *argv[])
 	struct ebuf ebuf;
 	char ebuf_buf[1024];
 	void *ctx, *sheet_ctx;
-	int r = -1;
 	int i, j;
-	char c1, c2;
-	int row1, col1, row2, col2;
+	struct cell_area ca;
 	const char *s;
+	const char *fname, *sheet = NULL, *area = NULL;
 
-	if (argc != 4) {
-		fprintf(stderr, "Read values from Open Document Spreadsheet files (.ods):\nUsage: <ods-file> <sheet> B1:H99\n");
+	if (argc < 2 || argc > 4) {
+		fprintf(stderr, "Read values from Open Document Spreadsheet files (.ods):\nUsage: <ods-file> [<sheet> [B1[:H99]]]\n");
 		return -1;
 	}
 
-	if (sscanf(argv[3], "%c%d:%c%d", &c1, &row1, &c2, &row2) != 4) {
-		fprintf(stderr, "Invalid area format\n");
-		return -1;
-	}
+	fname = argv[1];
 
-	col1 = col_letter2num(c1);
-	col2 = col_letter2num(c2);
-	if (col1 < 0 || col2 < 0) {
-		fprintf(stderr, "Invalid column name\n");
-		return -1;
-	}
+	if (argc > 2)
+		sheet = argv[2];
 
-	if (col1 > col2 || row1 > row2) {
-		fprintf(stderr, "Invalid area coordinates\n");
-		return -1;
+	if (argc > 3) {
+		area = argv[3];
+		if (parse_cell_area(area, &ca)) {
+			fprintf(stderr, "Invalid cell area format\n");
+			return -1;
+		}
 	}
-
-	row1--;
-	row2--;
 
 	ebuf_init(&ebuf, ebuf_buf, sizeof(ebuf_buf));
 
-	ctx = ods_open(argv[1], &ebuf);
+	ctx = ods_open(fname, &ebuf);
 	if (!ctx) {
-		printf("%s", ebuf_s(&ebuf));
+		fprintf(stderr, "%s", ebuf_s(&ebuf));
 		return -1;
 	}
 
-	sheet_ctx = ods_open_sheet(ctx, argv[2], &ebuf);
-	if (!sheet_ctx) {
-		fprintf(stderr, "%s", ebuf_s(&ebuf));
-		goto fin;
+	if (!sheet) {
+		ods_print_sheet_names(ctx);
+		return 0;
 	}
 
-	for (i = row1; i <= row2; i++) {
-		for (j = col1; j <= col2; j++) {
+	if (!area)
+		return ods_print_sheet(ctx, sheet);
+
+	sheet_ctx = ods_open_sheet(ctx, sheet, &ebuf);
+	if (!sheet_ctx) {
+		fprintf(stderr, "%s", ebuf_s(&ebuf));
+		return -1;
+	}
+
+	for (i = ca.row1; i <= ca.row2; i++) {
+		for (j = ca.col1; j <= ca.col2; j++) {
 			printf("\t%s", ods_sheet_val(sheet_ctx, i, j));
 		}
 		printf("\n");
@@ -71,9 +112,7 @@ int main(int argc, char *argv[])
 
 	ods_close_sheet(sheet_ctx);
 
-	r = 0;
-
-fin:
 	ods_close(ctx);
-	return r;
+
+	return 0;
 }
